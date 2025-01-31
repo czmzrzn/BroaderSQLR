@@ -1,0 +1,69 @@
+---
+title: "BroaderSQLRData"
+author: "Cameron B. Guy"
+date: "2025-01-30"
+output: html_document
+---
+
+```{r}
+getwd()
+library(revtools)
+library(synthesisr)
+library(dplyr)
+library(janitor)
+library(tidyverse)
+library(stringr)
+library(tidytext)
+library(widyr)
+library(ggraph)
+library(ggplot2)
+library(igraph)
+library(base)
+library(stm)
+library(wordcloud)
+library(writexl)
+```
+
+
+```{r setup, include=FALSE}
+#load in ris files and create a table with all data
+ris_files <- list.files(path = "/Users/cameronguy/Documents/BROADSQLR", pattern = ".ris", full.names = TRUE)
+data_raw <- read_refs(ris_files, return_df = TRUE, verbose = TRUE)
+#8658 rows 42 columns
+```
+## Data wrangling
+
+```{r data wrangling}
+# make all column names & observations lowercase & remove italics characters from title
+data_lowercase <- data_raw %>%
+  clean_names() %>%
+  mutate_all(.funs=tolower) %>%
+  mutate(title = str_replace_all(title, "<i>", "")) %>%
+  mutate(title = str_replace_all(title, "</i>", ""))
+
+# complete missing values in source type column from zz
+data_lowercase <- data_lowercase %>%
+    mutate(source_type = ifelse(is.na(source_type) & str_detect(zz, "-"), zz, source_type)) %>%
+    mutate(source_type = str_replace(source_type, "ty  - ", "")) %>%
+    mutate(source_type = str_replace(source_type, "﻿", ""))
+
+#update database column to include wos
+data_lowercase <- data_lowercase %>%
+  mutate(database = ifelse(is.na(database), "wos", "scopus"))
+
+#remove unnecessary columns
+data_wrangled <- select(data_lowercase, -c("a1", "ji", "j9", "c6", "date_generated", "supertaxa", "a2", "fu", "fx", "url", "accession_zr", "proceedings_title", "chemicals", "source_abbreviated", "zz", "filename", "source_abbreviated"))
+
+#find and remove duplicates by doi
+data_unique <- deduplicate(data_wrangled, "doi", method = "exact")
+#8417 left - 241 removed
+
+#find and remove duplicates within 5 different characters in title
+data_unique2 <- deduplicate(data_unique, "title", method = "string_osa", threshold = 5)
+#8341 left, another 76 removed
+
+#rename to data for simplicity sake
+data <- data_unique2
+```
+
+
