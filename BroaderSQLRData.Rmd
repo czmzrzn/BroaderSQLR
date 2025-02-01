@@ -22,6 +22,8 @@ library(base)
 library(stm)
 library(wordcloud)
 library(writexl)
+library(bibliometrix)
+library(shiny)
 ```
 
 
@@ -66,6 +68,36 @@ data_unique2 <- deduplicate(data_unique, "title", method = "string_osa", thresho
 data <- data_unique2
 
 write.csv(data)
+write_xlsx(data, "broaddata8417unique.xlsx")
+write_bibliography(data, "database.ris", format = "ris")
 ```
 
 
+
+
+
+```{r}
+##ahhh get rid of na/empty abstracts
+data <- data %>%
+  filter(!is.na(abstract) & abstract != "")
+write_xlsx(data, "broaddata8417unique.xlsx")
+write_bibliography(data, "database.ris", format = "ris")
+```
+
+```{r}
+##this is gonna take a minute isnt it
+##tokenize abstract
+data_clean <- data %>%
+  unnest_tokens(word, abstract)
+
+##remove stop words
+data_clean <- data_clean %>%
+  anti_join(stop_words, by = "word")
+
+##reassemble
+data_clean <- data_clean %>%
+  group_by(row_number()) %>%
+  summarise(cleaned_abstract = paste(word, collapse = " "))
+
+
+```
