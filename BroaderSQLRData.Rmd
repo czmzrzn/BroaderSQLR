@@ -64,6 +64,8 @@ data_unique2 <- deduplicate(data_unique, "title", method = "string_osa", thresho
 
 #rename to data for simplicity sake
 data <- data_unique2
+
+write.csv(data)
 ```
 
 
