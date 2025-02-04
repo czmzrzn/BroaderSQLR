@@ -24,6 +24,10 @@ library(wordcloud)
 library(writexl)
 library(bibliometrix)
 library(shiny)
+library(topicmodels)
+library(quanteda)
+library(textstem)
+library(stopwords)
 ```
 
 
@@ -85,19 +89,107 @@ write_bibliography(data, "database.ris", format = "ris")
 ```
 
 ```{r}
-##this is gonna take a minute isnt it
-##tokenize abstract
-data_clean <- data %>%
-  unnest_tokens(word, abstract)
+##need to lematise
+lexicon_url <- "https://raw.githubusercontent.com/michmech/lemmatization-lists/master/lemmatization-en.txt"
+lexicon <- read_delim(lexicon_url, delim = "\t", col_names = c("word", "lemma"))
 
-##remove stop words
+# Step 1: Clean HTML tags
+data_clean <- data_clean %>%
+  mutate(cleaned_abstract = gsub("<.*?>", "", cleaned_abstract))
+
+# Step 2: Remove copyright statements
+data_clean <- data_clean %>%
+  mutate(cleaned_abstract = gsub("(?i)(©|copyright\\s*\\d{4}.*)", "", cleaned_abstract, perl = TRUE))
+
+# Step 3: Remove short words (1 to 3 letters)
+data_clean <- data_clean %>%
+  mutate(cleaned_abstract = gsub("\\b\\w{1,3}\\b", "", cleaned_abstract))
+
+# Step 4: Remove unwanted characters (e.g., punctuation, special symbols)
+data_clean <- data_clean %>%
+  mutate(cleaned_abstract = gsub("[^a-zA-Z\\s]", "", cleaned_abstract))
+
+# Step 5: Trim extra spaces
+data_clean <- data_clean %>%
+  mutate(cleaned_abstract = trimws(gsub("\\s+", " ", cleaned_abstract)))
+
+# Step 6: Remove numbers
+data_clean <- data_clean %>%
+  mutate(cleaned_abstract = gsub("[0-9]", "", cleaned_abstract))
+
+# Now proceed with the tokenization, lemmatization, stopword removal, etc.
+# Tokenize using tidytext's unnest_tokens (no need for quanteda tokens)
+data_clean <- data_clean %>%
+  unnest_tokens(word, cleaned_abstract)
+
+
+# Remove default stopwords
 data_clean <- data_clean %>%
   anti_join(stop_words, by = "word")
 
-##reassemble
+# Remove custom structural words
+structural_words <- c("how", "may", "mays", "researches", "researcher", 
+                      "researchers", "researched", "articles", "artcile",
+                      "twos", "oughter" "method", "conclusion", "require", 
+                      "result", "whiles", "arst", "mayed", "hows", "buts", 
+                      "suggests", "suggest", "found", "founds", 
+                      "article", "university", "study", "research", "find",
+                      "data", "paper", "analyze", "examine", "investigate",
+                      "but", "one", "two", "three", "four", "five", "six", 
+                      "fours", "fourth", "seven", "eight", "nine", "ten", 
+                      "zero", "while", "day", "days", "week", "weeks", 
+                      "chapters", "common", "commonest", "chapter", "hundredth",
+                      "important", "importance", "better", "betters", "authors",
+                      "author", "eighth", "arst", "analysed", "humans", "tenth",
+                      "human", "literature", "literatures", "focus", "foci", 
+                      "focuses")
+
+data_clean <- data_clean %>%
+  filter(!(word %in% structural_words))
+
+# Lemmatize using the lexicon
+data_clean <- data_clean %>%
+  left_join(lexicon, by = "word") %>%
+  mutate(word = ifelse(is.na(lemma), word, lemma)) %>%
+  select(-lemma)
+
+# Reassemble cleaned text
 data_clean <- data_clean %>%
   group_by(row_number()) %>%
   summarise(cleaned_abstract = paste(word, collapse = " "))
 
+# Create bigrams (n = 2)
+bigrams <- data_clean %>%
+  unnest_tokens(ngram, cleaned_abstract, token = "ngrams", n = 2)
+
+# Create trigrams (n = 3)
+trigrams <- data_clean %>%
+  unnest_tokens(ngram, cleaned_abstract, token = "ngrams", n = 3)
+
+# Preview the output
+head(bigrams)
+head(trigrams)
+
+
+dfm <- tokens %>%
+  dfm() %>%
+  dfm_trim(min_termfreq = 5)  # Remove rare terms
+
+out <- convert(dfm, to = "stm")
+
+stm_model <- stm(documents = out$documents, 
+                 vocab = out$vocab, 
+                 K = 6, 
+                 data = out$meta, 
+                 init.type = "LDA")
+
+testlabeledtopics <- labelTopics(stm_model)
+testlabeledtopics
+
+testplot <- plot(stm_model, type = "summary", n = 6)
+testplot
+
+testcloud <- cloud(stm_model, topic = 7)
+testcloud
 
 ```
